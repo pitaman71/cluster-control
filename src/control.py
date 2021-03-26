@@ -26,40 +26,57 @@ class Configuration(resource.Resource):
     """Resource representing top-level configuration of all cloud resources necessary to run the API service
     and all of the static and on-demand resources on which it depends."""
     def __init__(self):
-        self.cluster_name = 'cluster3'
-        self.repo_name = 'craftsmanexchange'
-        self.file_name = 'cluster_config.json'
+        self.file_name:string = 'config.json'
+        self.cluster_name:string = None
+        self.repo_name:string = None
+        self.ec2_instance_type:string = None
         self.git_deploy_key = None
         self.instance_access_key = None
-        self.ec2_instance_type = 't2.micro'
         self.security_group = None
         self.public_ip = None
         self.cluster = None
-        self.yum_package_names = ['']
         self.yum_package_loaders = None
         self.git_cloners = None
         self.master_config_files = None
         self.https_creds_files = None
         self.api_services = None
-        #self.local_trust_dev_creds = None
+
+    def marshal(self, visitor):
+        visitor.beginObject(self)
+        visitor.inline('cluster_name')
+        visitor.inline('repo_owner')
+        visitor.inline('repo_name')
+        visitor.inline('ec2_instance_type')
+        visitor.inline('git_deploy_key')
+        visitor.inline('instance_access_key')
+        visitor.inline('security_group')
+        visitor.inline('public_ip')
+        visitor.inline('cluster')
+        visitor.inline('yum_package_loaders')
+        visitor.inline('git_cloners')
+        visitor.inline('master_config_files')
+        visitor.inline('https_creds_files')
+        visitor.inline('api_services')
+        visitor.endObject(self)
 
     def save(self):
         next_file_name = f"{self.file_name}.next"
         with open(next_file_name, 'wt') as fp:
             writer = formats.JSONWriter(sys.modules[__name__], self)
             self.marshal(writer)
-            fp.write(json.dumps(writer.write()))
+            fp.write(json.dumps(writer.write(), indent=4))
         os.rename(next_file_name, self.file_name)
 
-    def load(self):
-        if os.path.exists(self.file_name):
-            with open(self.file_name, 'rt') as fp:    
+    def load(self, file_name=None):
+        file_name = file_name or self.file_name
+        if os.path.exists(file_name):
+            with open(file_name, 'rt') as fp:
                 reader = formats.JSONReader(sys.modules[__name__], json.load(fp))
                 self.marshal(reader)
 
     def plan(self):
         if self.git_deploy_key is None:
-            self.git_deploy_key = code_repository.GithubDeployKey(f'{self.repo_name}-{self.cluster_name}-deploy-key', owner='pitaman71', repo=self.repo_name)
+            self.git_deploy_key = code_repository.GithubDeployKey(f'{self.repo_name}-{self.cluster_name}-deploy-key', owner={self.repo_owner}, repo=self.repo_name)
         self.git_deploy_key.plan()
 
         if self.instance_access_key is None:
@@ -161,59 +178,52 @@ class Configuration(resource.Resource):
     def put(self, local_path: str, remote_path:str):
         self.cluster.instances[0].put(local_path, remote_path, 60)
 
-    def marshal(self, visitor):
-        visitor.beginObject(self)
-        visitor.inline('git_deploy_key')
-        visitor.inline('instance_access_key')
-        visitor.inline('security_group')
-        visitor.inline('public_ip')
-        visitor.inline('cluster')
-        visitor.inline('yum_package_loaders')
-        visitor.inline('git_cloners')
-        visitor.inline('master_config_files')
-        visitor.inline('https_creds_files')
-        visitor.inline('api_services')
-        visitor.endObject(self)
-
 import argparse
 
 parser = argparse.ArgumentParser(description='Spinup cloud cluster')
-parser.add_argument('verb', type=str, choices=['up', 'UP', 'down', 'DOWN', 'watch', 'WATCH', 'ip', 'IP', 'ssh', 'SSH', 'stop', 'STOP', 'start', 'START', 'pull', 'PULL', 'get', 'GET', 'put', 'PUT', 'build', 'BUILD'],
+parser.add_argument('verb', type=str, choices=['create', 'CREATE', 'up', 'UP', 'down', 'DOWN', 'watch', 'WATCH', 'ip', 'IP', 'ssh', 'SSH', 'stop', 'STOP', 'start', 'START', 'pull', 'PULL', 'get', 'GET', 'put', 'PUT', 'build', 'BUILD'],
                     help='command verbs: bring cluster UP, take cluster DOWN, WATCH server logs, show service IP address, open SSH shell on service instance')
 args, unknown = parser.parse_known_args()
 
 config = Configuration()
-config.load()
-config.plan()
-if args.verb in ('up', 'UP'):
-    config.up(config)
-elif args.verb in ('down', 'DOWN'):
-    config.down(config)
-elif args.verb in ('watch', 'WATCH'):
-    config.watch()
-elif args.verb in ('ip', 'IP'):
-    config.ip()
-elif args.verb in ('ssh', 'SSH'):
-    config.ssh()
-elif args.verb in ('stop', 'STOP'):
-    config.stop()
-elif args.verb in ('start', 'START'):
-    config.start()
-elif args.verb in ('pull', 'PULL'):
-    config.pull()
-elif args.verb in ('build', 'BUILD'):
-    config.build()
-elif args.verb in ('get', 'GET'):
-    parser = argparse.ArgumentParser(description='GET file from instance')
-    parser.add_argument('remote_path', type=str)
-    parser.add_argument('local_path', type=str)
+if args.verb in ('create', 'CREATE'):
+    parser = argparse.ArgumentParser(description='Create a new cluster from a template file')
+    parser.add_argument('template', type=str, help='Name or path to template file')
     verb_args = parser.parse_args(unknown)
-    config.get(verb_args.remote_path, verb_args.local_path)
-elif args.verb in ('put', 'PUT'):
-    parser = argparse.ArgumentParser(description='PUT file to instance')
-    parser.add_argument('local_path', type=str)
-    parser.add_argument('remote_path', type=str)
-    verb_args = parser.parse_args(unknown)
-    config.put(verb_args.local_path, verb_args.remote_path)
+    config.load(verb_args.template)
+    config.plan()
+else:
+    config.load()
+    config.plan()
+    if args.verb in ('up', 'UP'):
+        config.up(config)
+    elif args.verb in ('down', 'DOWN'):
+        config.down(config)
+    elif args.verb in ('watch', 'WATCH'):
+        config.watch()
+    elif args.verb in ('ip', 'IP'):
+        config.ip()
+    elif args.verb in ('ssh', 'SSH'):
+        config.ssh()
+    elif args.verb in ('stop', 'STOP'):
+        config.stop()
+    elif args.verb in ('start', 'START'):
+        config.start()
+    elif args.verb in ('pull', 'PULL'):
+        config.pull()
+    elif args.verb in ('build', 'BUILD'):
+        config.build()
+    elif args.verb in ('get', 'GET'):
+        parser = argparse.ArgumentParser(description='GET file from instance')
+        parser.add_argument('remote_path', type=str)
+        parser.add_argument('local_path', type=str)
+        verb_args = parser.parse_args(unknown)
+        config.get(verb_args.remote_path, verb_args.local_path)
+    elif args.verb in ('put', 'PUT'):
+        parser = argparse.ArgumentParser(description='PUT file to instance')
+        parser.add_argument('local_path', type=str)
+        parser.add_argument('remote_path', type=str)
+        verb_args = parser.parse_args(unknown)
+        config.put(verb_args.local_path, verb_args.remote_path)
     
 config.save()

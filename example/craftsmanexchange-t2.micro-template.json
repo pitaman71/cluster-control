@@ -1,0 +1,7 @@
+{
+    "__class__": "Configuration",
+    "cluster_name": "cluster3",
+    "repo_owner": "pitaman71",
+    "repo_name": "craftsmanexchange",
+    "ec2_instance_type": "t2.micro"
+}
