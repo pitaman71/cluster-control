@@ -20,6 +20,7 @@ package-lock.json
 tmp.json
 cert/
 dist/
+work/
 200.html
 *.pem
 *.cert
