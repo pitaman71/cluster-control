@@ -13,14 +13,36 @@ import resource
 import blob
 import formats
 import package_manager
-import ssl_security
+import collections
 import ec2_cloud
 import code_repository
+import ssl_security
 
 script_path = os.path.dirname(os.path.abspath(__file__))
 repo_path = script_path.split('/')
 repo_path = repo_path[0:len(repo_path)-1]
 repo_path = '/'.join(repo_path)
+
+class JSONSetEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if type(obj) is set:
+            return dict(_set_object=list(obj))
+        else:
+            return json.JSONEncoder.default(self, obj)
+
+def json_as_python_set(dct):
+    """Decode json {'_set_object': [1,2,3]} to set([1,2,3])
+
+    Example
+    -------
+    decoded = json.loads(encoded, object_hook=json_as_python_set)
+
+    Also see :class:`JSONSetEncoder`
+
+    """
+    if '_set_object' in dct:
+        return set(dct['_set_object'])
+    return dct
 
 class Configuration(resource.Resource):
     """Resource representing top-level configuration of all cloud resources necessary to run the API service
@@ -37,7 +59,7 @@ class Configuration(resource.Resource):
         self.cluster = None
         self.yum_package_loaders = None
         self.git_cloners = None
-        self.master_config_files = None
+        # self.master_config_files = None
         self.https_creds_files = None
         self.api_services = None
 
@@ -54,7 +76,7 @@ class Configuration(resource.Resource):
         visitor.inline('cluster')
         visitor.inline('yum_package_loaders')
         visitor.inline('git_cloners')
-        visitor.inline('master_config_files')
+        # visitor.inline('master_config_files')
         visitor.inline('https_creds_files')
         visitor.inline('api_services')
         visitor.endObject(self)
@@ -64,19 +86,19 @@ class Configuration(resource.Resource):
         with open(next_file_name, 'wt') as fp:
             writer = formats.JSONWriter(sys.modules[__name__], self)
             self.marshal(writer)
-            fp.write(json.dumps(writer.write(), indent=4))
+            fp.write(json.dumps(writer.write(), indent=4, cls=JSONSetEncoder))
         os.rename(next_file_name, self.file_name)
 
     def load(self, file_name=None):
         file_name = file_name or self.file_name
         if os.path.exists(file_name):
             with open(file_name, 'rt') as fp:
-                reader = formats.JSONReader(sys.modules[__name__], json.load(fp))
+                reader = formats.JSONReader(sys.modules[__name__], json.load(fp, object_hook=json_as_python_set))
                 self.marshal(reader)
 
     def plan(self):
         if self.git_deploy_key is None:
-            self.git_deploy_key = code_repository.GithubDeployKey(f'{self.repo_name}-{self.cluster_name}-deploy-key', owner={self.repo_owner}, repo=self.repo_name)
+            self.git_deploy_key = code_repository.GithubDeployKey(f'{self.repo_name}-{self.cluster_name}-deploy-key', owner=self.repo_owner, repo=self.repo_name)
         self.git_deploy_key.plan()
 
         if self.instance_access_key is None:
@@ -109,12 +131,12 @@ class Configuration(resource.Resource):
             ]
         for git_cloner in self.git_cloners: git_cloner.plan()
 
-        if self.master_config_files is None:
-            self.master_config_files = [
-                blob.File.Put('master_config_file','json', f'file:/Users/pitaman/Documents/sand/{self.repo_name}/express-api/src/config.json', instance, f'{self.repo_name}/express-api/src/config.json')
-                for instance in self.cluster.instances
-            ]
-        for master_config_file in self.master_config_files: master_config_file.plan()
+        # if self.master_config_files is None:
+        #     self.master_config_files = [
+        #         blob.File.Put('master_config_file','json', f'file:/Users/pitaman/Documents/sand/{self.repo_name}/express-api/src/config.json', instance, f'{self.repo_name}/express-api/src/config.json')
+        #         for instance in self.cluster.instances
+        #     ]
+        # for master_config_file in self.master_config_files: master_config_file.plan()
 
         if self.https_creds_files is None:
             self.https_creds_files = [
@@ -147,7 +169,7 @@ class Configuration(resource.Resource):
             self.security_group,
             self.public_ip,
             self.cluster
-        ] + self.yum_package_loaders + self.git_cloners + self.master_config_files + self.https_creds_files + self.api_services
+        ] + self.yum_package_loaders + self.git_cloners + self.https_creds_files + self.api_services #+ self.master_config_files
 
     def watch(self):
         self.api_services[0].watch()

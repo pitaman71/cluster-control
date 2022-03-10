@@ -48,6 +48,7 @@ class GithubDeployKey(resource.Resource):
             request = urllib.request.Request(
                 f'https://api.github.com/repos/{self.owner}/{self.repo}/keys', 
                 method='POST', headers={ 'Authorization': authorization })
+            print(f"DEBUG: request is {request.__dict__}")
             with urllib.request.urlopen(request, data=create_key_params) as resp:
                 if resp.status >= 300 or resp.status < 200:
                     raise RuntimeError(resp.read().decode('utf-8'))

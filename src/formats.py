@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import List, Dict
 
 import json
-import sys
 
 def lookup_class(module, suffix, prefix=[]):
     if len(suffix) == 0:
