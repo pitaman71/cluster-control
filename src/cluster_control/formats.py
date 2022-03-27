@@ -2,9 +2,35 @@
 
 from __future__ import annotations
 
-from typing import List, Dict
+from typing import Any, List, Dict
 
 import json
+from xmlrpc.client import boolean
+
+class JSONSetEncoder(json.JSONEncoder):
+    def default(self,  obj):
+        if type(obj) is set:
+            return dict(_set_object=list(obj))
+        elif type(obj) is bytes:
+            return dict(_bytes_object=obj.decode('utf-8'))
+        else:
+            return json.JSONEncoder.default(self, obj)
+
+def json_as_python_set(dct):
+    """Decode json {'_set_object': [1,2,3]} to set([1,2,3])
+
+    Example
+    -------
+    decoded = json.loads(encoded, object_hook=json_as_python_set)
+
+    Also see :class:`JSONSetEncoder`
+
+    """
+    if '_set_object' in dct:
+        return set(dct['_set_object'])
+    elif '_bytes_object' in dct:
+        return dct['_bytes_object'].encode('utf-8')
+    return dct
 
 def lookup_class(module, suffix, prefix=[]):
     if len(suffix) == 0:
@@ -52,7 +78,7 @@ class JSONReader:
         if self.json is None:
             raise RuntimeError('No JSON here')
         elif attr_name in self.json:
-            setattr(self.obj, attr_name, JSONReader(self.modules, self.json[attr_name], self.refs).read())
+            setattr(self.obj, attr_name, JSONReader(self.modules, self.json[attr_name], self.refs).read(getattr(self.obj, attr_name)))
         elif not self.is_ref:
             print(f"WARNING: While reading object of type {self.obj.__class__.__qualname__} property {attr_name} is missing in JSON {json.dumps(self.json)[:80]}")
 
@@ -63,17 +89,20 @@ class JSONReader:
         if self.json is None:
             raise RuntimeError('No JSON here')
         elif attr_name in self.json:
-            setattr(self.obj, attr_name, JSONReader(self.modules, self.json[attr_name], self.refs).read())
+            setattr(self.obj, attr_name, JSONReader(self.modules, self.json[attr_name], self.refs).read(getattr(self.obj, attr_name)))
         elif not self.is_ref:
             print (f"WARNING: While reading object of type {self.obj.__class__.__qualname__} property {attr_name} is missing in JSON {self.json}")
 
-    def read(self):
+    def read(self, obj=None):
         if isinstance(self.json, list):
             self.obj = [ JSONReader(self.modules, item, self.refs).read() for item in self.json ]
         elif isinstance(self.json, tuple):
             self.obj = (( JSONReader(self.modules, item, self.refs).read() for item in self.json ))
         elif isinstance(self.json, dict):
-            if '__class__' in self.json:
+            if obj is not None:
+                self.obj = obj
+                self.obj.marshal(self)
+            elif '__class__' in self.json:
                 klass = lookup_class(self.modules, self.json['__class__'].split('.'))
                 self.obj = klass()
                 self.obj.marshal(self)
@@ -85,6 +114,11 @@ class JSONReader:
 
 class JSONWriter:
     """Write in-memory representation to semi-self-describing JSON by introspecting objects using their marshal method"""
+    obj: Any
+    json: Any
+    is_ref: boolean
+    refs: Any
+
     def __init__(self, modules, obj, refs=None):
         self.modules = modules
         self.obj = obj
@@ -96,7 +130,8 @@ class JSONWriter:
         """Must be called at the start of any marshal method. Tells this object that we are visiting the body of that object next"""
         self.json = {}
         
-        class_name = '.'.join([obj.__class__.__module__, obj.__class__.__qualname__])
+        path = [*obj.__class__.__module__.split('.'), *obj.__class__.__qualname__.split('.')]
+        class_name = '.'.join(path[1:])
         if class_name not in self.refs:
             self.refs[class_name] = {}
         self.json['__class__'] = class_name
@@ -116,26 +151,29 @@ class JSONWriter:
         Expect that the attribute value is probably not a reference to a shared object (though it may be)
         """
         if not (self.is_ref):
-            self.json[attr_name] = JSONWriter(self.modules, getattr(self.obj, attr_name), self.refs).write()
+            self.json[attr_name] = JSONWriter(self.modules, getattr(self.obj, attr_name), self.refs).toJSON()
 
     def offline(self, attr_name):
         """For the in-memory object currently being written to JSON, write the value of attribute :attr_name to JSON propery attr_name
         Expect that the attribute value is probably a reference to a shared object (though it may not be)
         """
         if not (self.is_ref):
-            self.json[attr_name] = JSONWriter(self.modules, getattr(self.obj, attr_name), self.refs).write()
+            self.json[attr_name] = JSONWriter(self.modules, getattr(self.obj, attr_name), self.refs).toJSON()
 
-    def write(self):
+    def toJSON(self):
         if self.json is not None:
             pass
         elif isinstance(self.obj, list):
-            self.json = [ JSONWriter(self.modules, item, self.refs).write() for item in self.obj ]
+            self.json = [ JSONWriter(self.modules, item, self.refs).toJSON() for item in self.obj ]
         elif isinstance(self.obj, tuple):
-            self.json = (( JSONWriter(self.modules, item, self.refs).write() for item in self.obj ))
+            self.json = (( JSONWriter(self.modules, item, self.refs).toJSON() for item in self.obj ))
         elif isinstance(self.obj, dict):
-            self.json = dict((( (key, JSONWriter(self.modules, value, self.refs).write()) for key, value in self.obj.items())))
+            self.json = dict((( (key, JSONWriter(self.modules, value, self.refs).toJSON()) for key, value in self.obj.items())))
         elif hasattr(self.obj, 'marshal'):
             self.obj.marshal(self)
         else:
             self.json = self.obj
         return self.json
+
+    def toString(self):
+        return json.dumps(self.toJSON(), indent=4, cls=JSONSetEncoder)

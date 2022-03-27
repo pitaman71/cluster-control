@@ -4,7 +4,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="cluster-control-pitaman71", # Replace with your own username
+    name="cluster-control-pitaman71",
     version="0.0.1",
     author="Alan Pita",
     author_email="pitaman512@gmail.com",
