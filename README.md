@@ -62,3 +62,15 @@ spin it down to release AWS resources some of which (e.g.
 instances) have nontrivial cost by the minute, and others
 of which (e.g. keys) have a capped quota that an be allocated
 at any one time.
+
+# Example of calls with installation:
+
+In a fresh directory and with a python 3.8+ virtual environment:
+
+```
+rm -f cluster.cfg
+pip install ~/Documents/sand/cluster-control
+python -m cluster_control.control create swivell-cluster --config cluster.cfg
+python -m cluster_control.control configure --config cluster.cfg --repo_owner pitaman71 --repo_name swivell-talent-marketplace --server_certs_path /var/server_certs
+python -m cluster_control.control up --config cluster.cfg
+```

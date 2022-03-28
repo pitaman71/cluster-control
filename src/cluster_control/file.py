@@ -5,6 +5,7 @@ from re import I
 
 import typing
 import abc
+import tempfile
 
 import os
 from urllib import request
@@ -12,7 +13,7 @@ from urllib import request
 from . import configurable
 from . import resource
 
-class Instance:
+class Instance(resource.Resource):
     @abc.abstractmethod
     def path(self) -> str:
         raise RuntimeError(f'Method is not implemented in class {self.__class__.__qualname__}')
@@ -43,7 +44,12 @@ class LocalFile(resource.Resource):
         super().__init__(resource_path)
         self.local_path = configurable.Var(self, 'local_path')
 
-    def Delete(self):
+    def temporary(self):
+        with tempfile.NamedTemporaryFile('wb+', delete=False) as keyfile:
+            self.local_path.select(keyfile.name)
+            keyfile.close()
+
+    def delete(self):
         if not self.local_path:
             print(f"{self} : local_path is not selected")
         else:
@@ -52,16 +58,21 @@ class LocalFile(resource.Resource):
 
 class RemoteFile(resource.Resource):
     remote_path: configurable.Var[str]
-    instance: configurable.Var[Instance]
     sudo: configurable.Var[bool]
-    mode: configurable.Var[str]
+    chmod: configurable.Var[str]
+
+    instance: resource.Ref[Instance]
 
     def __init__(self, resource_path: typing.Union[ None, typing.List[str] ] = None):
         super().__init__(resource_path)
         self.remote_path = configurable.Var(self, 'remote_path')
-        self.instance = configurable.Var(self, 'instance')
         self.sudo = configurable.Var(self, 'sudo', False)
-        self.mode = configurable.Var(self, 'mode')
+        self.chmod = configurable.Var(self, 'chmod')
+
+        self.instance = resource.Ref(self, 'instance')
+
+    def elaborate(self, phase: resource.Phase):
+        self.instance.resolve(phase)
 
 class Transfer(resource.Resource):
     local: resource.Ref[LocalFile]
@@ -72,13 +83,15 @@ class Transfer(resource.Resource):
         super().__init__(resource_path)
         self.local = resource.Ref(self, 'local')
         self.remote = resource.Ref(self, 'remote')
-        self.image = resource.Ref(self, 'image', Image)
+        self.image = resource.Ref(self, 'image')
 
     def elaborate(self, phase: resource.Phase):
-        if not self.remote.elaborate(phase):
-            phase.missing(self.remote)
-        if not self.image.elaborate(phase):
-            phase.missing(self.remote)
+        self.image.resolve(phase, Image)
+        self.remote.resolve(phase)
+        self.image.resolve(phase)
+
+    def is_ready(self):
+        return self.remote and self.image and self.image().contents
 
     def put(self):
         if not self.remote:

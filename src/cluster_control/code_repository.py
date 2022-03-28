@@ -26,12 +26,13 @@ class GithubDeployKey(resource.Resource):
         self.repo = configurable.Var(self, 'repo')
         self.repo_key_id = configurable.Var(self, 'repo_key_id')
 
-        self.ssl_key = resource.Ref(self, 'ssl_key', ssl_security.RSAKey)
+        self.ssl_key = resource.Ref(self, 'ssl_key')
 
     def url(self):
         return f'git@github.com:{self.owner}/{self.repo}.git'
 
     def elaborate(self, phase: resource.Phase):
+        self.ssl_key.resolve(phase, ssl_security.RSAKey)
         self.ssl_key().alias(
             path=self.owner()+'-' + self.repo() + '.rsa',
             bits=2048
@@ -64,11 +65,11 @@ class GithubDeployKey(resource.Resource):
                         self.repo_key_id = asJSON['id']
 
     def down(self, phase: resource.Phase):
-        if self.repo_key_id is not None:
+        if self.repo_key_id:
             with phase.sub(f"{self} : un-registering deploy key for read access to github repo {self.owner}/{self.repo}") as phase:
                 authorization = 'token ' + os.environ["GITHUB_PASSWORD"]
                 request = Request(
-                    f'https://api.github.com/repos/{self.owner}/{self.repo}/keys/{self.repo_key_id}', 
+                    f'https://api.github.com/repos/{self.owner()}/{self.repo()}/keys/{self.repo_key_id()}', 
                     method='DELETE',
                     headers={ 'Authorization': authorization
                 })
@@ -94,7 +95,7 @@ class GitDeploy(resource.Resource):
         self.is_installed = configurable.Var(self, 'is_installed')
 
         self.instance = resource.Ref(self, 'instance')
-        self.deploy_key = resource.Ref(self, 'deploy_key', GithubDeployKey)
+        self.deploy_key = resource.Ref(self, 'deploy_key')
 
     def url(self):
         return f'git@github.com:{self.owner()}/{self.repo()}.git'
@@ -114,6 +115,10 @@ class GitDeploy(resource.Resource):
             )
             deploy_key.put()
 
+    def elaborate(self, phase: resource.Phase):
+        self.deploy_key.resolve(phase, GithubDeployKey)
+        super().elaborate(phase)
+
     def up(self, phase: resource.Phase):
         super().up(phase)
         if self.is_installed and self.is_installed:
@@ -124,9 +129,8 @@ class GitDeploy(resource.Resource):
             self.upload_key(phase)
             instance = self.instance()
             with phase.sub(f"{self} : cloning repo {self.repo}/{self.owner} on {self.instance}") as phase:
-                instance.execute(['ssh-add', self.deploy_key_remote_path() ], 60)
                 instance.execute(['rm', '-f', self.repo() ], 60)
-                instance.execute(['git', 'config', '--global', 'core.sshCommand', """'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no'"""], 60)
+                instance.execute(['git', 'config', '--global', 'core.sshCommand', f"""'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -i {self.deploy_key_remote_path()}'"""], 60)
                 instance.execute(['git', 'clone', self.url(), self.repo()], 60)
                 self.is_installed.select(True)
 
@@ -145,6 +149,6 @@ class GitDeploy(resource.Resource):
         if self.is_installed:
             self.upload_key(phase)
             instance = self.instance()
-            instance.execute(['ssh-add', self.deploy_key_remote_path() ], 60)
+            instance.execute(['git', 'config', '--global', 'core.sshCommand', f"""'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -i {self.deploy_key_remote_path()}'"""], 60)
             instance.execute(['git', 'remote', 'show', 'origin' ], timeout=60, cwd=self.name)
             instance.execute(['git', 'pull' ], timeout=60, cwd=self.name)

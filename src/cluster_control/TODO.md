@@ -5,20 +5,16 @@
     - [x] add configurable.Var and resource.Ref
     - [x] add configurable.Phase to represent nestable tasks
     - [x] relocate JSONSetEncoder to format.py
+  - make sure all AWS created resources have names prefixed with cluster name
   - restore EC2 express cluster ops to full working order
-    - [ ] up
-    - [ ] down
-    - [ ] start
-    - [ ] stop
-    - [ ] pull
-    - [ ] build
-    - [ ] ssh
+    - [x] up, down, ssh
+    - [ ] start, stop
+    - [ ] pull, build
   - proper ordering of construction, destruction is more than just forward and backward
     it requires dynamic ordering of phases across resources as constructed
     approach: combine resource life cycle callbacks into a single method
     - [ ] restructure config validation, resource connection, elaborate, up, down methods as schedulable actions
     - [ ] make config validation, resource connection explicit phases
-  - make sure all AWS created resources have names prefixed with cluster name
   - preliminary credentials check for services
     - [ ] github access token
     - [ ] AWS/boto3 control panel access
@@ -29,5 +25,5 @@
     - create lambda function
     - create api gateway trigger    
   - lambda down
-  - lambda release
-  - lambda 
+  - lambda pull
+  - lambda alias

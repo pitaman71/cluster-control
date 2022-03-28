@@ -66,19 +66,20 @@ class Resource(configurable.HasPath):
             if isinstance(value, configurable.Var):
                 self.__dict__[key] = value
             elif isinstance(value, resource.Ref):
-                self.__dict__[key] = value
+                self.__dict__[key].borrow(value)
             elif isinstance(value, resource.Resource):
-                self.__dict__[key].use(value)
+                self.__dict__[key].own(value)
             else:
                 self.__dict__[key] = configurable.Const(value)
         return self
 
-    def marshal(self, visitor):
+    def marshal(self, visitor: formats.JSONReader|formats.JSONWriter, inner: typing.Callable[[ formats.JSONReader|formats.JSONWriter ], typing.Any ] = lambda visitor: 0 ):
         visitor.beginObject(self)
         visitor.inline('name')
         for key, value in self.__dict__.items():
             if isinstance(value, configurable.Var) or isinstance(value, Ref):
                 visitor.inline(key)
+        inner(visitor)
         visitor.endObject(self)
 
     def collect(self, 
@@ -96,15 +97,6 @@ class Resource(configurable.HasPath):
                             raise RuntimeError("type error")
                         resource.add(value._resource)
                         value._resource.collect(var, resource)
-
-    def validate(self, phase: Phase):
-        """Configure dependencies of this resource on other resuorces"""
-        pass
-        # for key, value in self.__dict__.items():
-        #     if isinstance(value, configurable.Var):
-        #         with phase.sub(f"VALIDATE {value}") as phase:
-        #             if not value.configure():
-        #                 phase.missing(value)        
 
     def elaborate(self, phase: Phase):
         """Configure dependencies of this resource on other resuorces"""
@@ -204,18 +196,16 @@ class Instance(Resource):
         raise RuntimeError('Method is not implemented for class '+self.__class__.__qualname__)
 
 class Ref(typing.Generic[ResourceType]):
-    _generator: typing.Union[ None, typing.Callable[ [ typing.List[str] ], ResourceType ] ]
     _path: typing.List[str]
     _name: str
-    _optional: bool
     _resource: typing.Union[ None, ResourceType ]
+    _owner: None|Ref[ResourceType]
 
-    def __init__(self, parent: typing.Union[None, Resource], name: str, generator: typing.Union[None, typing.Callable[ [ typing.List[str] ], ResourceType ]]=None, optional: bool=False):
-        self._generator = generator
+    def __init__(self, parent: typing.Union[None, Resource]=None, name: str=''):
         self._path = [] if parent is None else parent.path()
         self._name = name
-        self.optional = optional
         self._resource = None
+        self._owner = None
 
     def path(self):
         return [ *self._path, self._name ]
@@ -224,23 +214,22 @@ class Ref(typing.Generic[ResourceType]):
         return f"Ref({'.'.join(self.path())})"
 
     def __bool__(self):
+        if self._owner is not None:
+            return bool(self._owner)
         return self._resource is not None
 
-    def resolve(self, phase: resource.Phase):
-        if self._resource is None and self._generator is not None:
-            self._resource = self._generator(self.path())
+    def resolve(self, phase: resource.Phase, generator: typing.Union[None, typing.Callable[ [ typing.List[str] ], ResourceType ]]=None):
+        if self._owner is not None:
+            pass
+        elif self._resource is None and generator is not None:
+            self._resource = generator(self.path())
             print(f"CREATE resource {self}")
-            self._resource.validate(phase)
-            self._resource.elaborate(phase)
 
     def __call__(self) -> ResourceType:
+        if self._owner is not None:
+            return self._owner()
         if self._resource is None:
-            if self._generator is not None:
-                self._resource = self._generator(self.path())
-            elif self._optional:
-                raise RuntimeError(f"Resource reference is optional {self}")
-            else:
-                raise RuntimeError(f"Resource reference is not connected {self}")
+            raise RuntimeError(f"Resource reference is not connected {self}")
         return self._resource
 
     def elaborate(self, phase: resource.Phase):
@@ -251,11 +240,18 @@ class Ref(typing.Generic[ResourceType]):
             self._resource.elaborate(phase)
         return bool(self)
 
-    def use(self, resource: ResourceType):
+    def borrow(self, owner: Ref[ResourceType]):
+        self._owner = owner
+        return self
+
+    def own(self, resource: ResourceType):
         self._resource = resource
         return self
 
     def marshal(self, visitor):
         visitor.beginObject(self)
+        visitor.inline('_path')
+        visitor.inline('_name')
         visitor.inline('_resource')
+        visitor.inline('_owner')
         visitor.endObject(self)

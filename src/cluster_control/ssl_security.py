@@ -33,8 +33,13 @@ class RSAKey(resource.Resource):
     def __init__(self, resource_path: typing.Union[ None, typing.List[str] ] = None):
         super().__init__(resource_path)
         self.bits = configurable.Var(self, 'bits').select(2048)
-        self.private = resource.Ref(self, 'private', file.Image)
-        self.public = resource.Ref(self, 'public', file.Image)
+        self.private = resource.Ref(self, 'private')
+        self.public = resource.Ref(self, 'public')
+
+    def elaborate(self, phase: resource.Phase):
+        self.private.resolve(phase, file.Image)
+        self.public.resolve(phase, file.Image)
+        super().elaborate(phase)
 
     def up(self, phase:resource.Phase):
         super().up(phase)
@@ -70,14 +75,19 @@ class RootCACredentials(resource.Resource):
         self.division = configurable.Var(self, 'division')
         self.serial = configurable.Var(self, 'serial')
 
-        self.key = resource.Ref(self, 'key', RSAKey)
-        self.cert = resource.Ref(self, 'cert', file.Image)
+        self.key = resource.Ref(self, 'key')
+        self.cert = resource.Ref(self, 'cert')
 
     def get_subject(self):
         return self.get_certificate().get_subject()
         
     def get_certificate(self):
         return crypto.load_certificate(crypto.FILETYPE_PEM, self.cert().contents())
+
+    def elaborate(self, phase: resource.Phase):
+        self.key.resolve(phase, RSAKey)
+        self.cert.resolve(phase, file.Image)
+        super().elaborate(phase)
 
     def up(self, phase: resource.Phase):
         super().up(phase)
@@ -116,10 +126,15 @@ class ServerCredentials(resource.Resource):
     def __init__(self, resource_path: typing.Union[ None, typing.List[str] ] = None):
         super().__init__(resource_path)
         self.authority = configurable.Var(self, 'authority')
-        self.key = resource.Ref(self, 'key', RSAKey)
-        self.cert = resource.Ref(self, 'cert', file.Image)
+        self.key = resource.Ref(self, 'key')
+        self.cert = resource.Ref(self, 'cert')
         self.serial = configurable.Var(self, 'serial')
-        
+
+    def elaborate(self, phase: resource.Phase):
+        self.key.resolve(phase, RSAKey)
+        self.cert.resolve(phase, file.Image)
+        super().elaborate(phase)
+
     def up(self, phase: resource.Phase):
         super().up(phase)
         if self.cert().contents:

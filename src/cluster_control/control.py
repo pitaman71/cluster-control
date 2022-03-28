@@ -42,7 +42,7 @@ if args.verb in ('create', 'CREATE'):
     config = ec2_express_cluster.ManageCluster([ args.resource_name ])
 else:
     with open(args.config, 'rt') as fp:
-        as_json = json.load(fp)
+        as_json = json.load(fp, object_hook=formats.json_as_python_set)
         reader = formats.JSONReader(sys.modules[__name__], as_json)
         config = reader.read()
     if not isinstance(config, resource.Resource):
@@ -53,7 +53,10 @@ all_resources: typing.Set[resource.Resource] = set()
 config.collect(all_vars, all_resources)
 for var in all_vars:
     name = '-'.join(var.path()[1:])
-    parser.add_argument('--'+name, type=str)
+    if name == '':
+        print(f"DEBUG: malformed {var}")
+    else:
+        parser.add_argument('--'+name, type=str)
 
 args, unknown = parser.parse_known_args()
 
@@ -66,13 +69,22 @@ persistor = resource.PersistInFile(args.config, config)
 
 if args.verb in ('up', 'UP'):
     with resource.Phase(f'cluster_control UP {config}', persistor, config) as phase:
-        config.validate(phase)
         config.elaborate(phase)
         config.up(phase)
         
 elif args.verb in ('down', 'DOWN'):
     with resource.Phase(f'cluster_control DOWN {config}', persistor, config) as phase:
         config.down(phase)
+elif args.verb in ('ssh', 'SSH'):
+    if not hasattr(config, 'shell'):
+        raise RuntimeError(f'ssh command is not supported for {config}')
+    with resource.Phase(f'cluster_control SSH {config}', persistor, config) as phase:
+        getattr(config, 'shell')(phase)
+elif args.verb in ('watch', 'WATCH'):
+    if not hasattr(config, 'watch'):
+        raise RuntimeError(f'watch command is not supported for {config}')
+    with resource.Phase(f'cluster_control WATCH {config}', persistor, config) as phase:
+        getattr(config, 'watch')(phase)
 else:
     persistor.save()
 
