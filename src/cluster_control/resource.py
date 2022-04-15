@@ -124,6 +124,10 @@ class Resource(configurable.HasPath):
             with Phase(f"DOWN {operation}", phase.persistor, operation) as phase:
                 operation.down(phase)
 
+    @abc.abstractmethod
+    def deploy(self, phase: Phase):
+        raise RuntimeError('Unsupported Method')
+
     def order_of_operations(self):
         """For a class which is simply an aggregate of dependent and internal resources,
         returns a list giving the order in which dependent and internal resources should
