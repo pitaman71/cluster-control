@@ -10,9 +10,9 @@ import uuid
 
 from . import configurable
 from . import resource
-from . import code_repository
+from . import git
 from . import aws_ec2
-from . import package_manager
+from . import yum
 from . import file
 from . import formats
 

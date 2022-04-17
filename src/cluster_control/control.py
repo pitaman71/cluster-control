@@ -16,10 +16,10 @@ from . import configurable
 from . import resource
 from . import file
 from . import formats
-from . import package_manager
+from . import yum
 from . import aws_ec2
 from . import ec2_express_cluster
-from . import code_repository
+from . import git
 from . import ssl_security
 
 import argparse

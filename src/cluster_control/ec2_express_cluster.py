@@ -2,9 +2,9 @@ import typing
 
 from . import configurable
 from . import resource
-from . import code_repository
+from . import git
 from . import aws_ec2
-from . import package_manager
+from . import yum
 from . import file
 
 class ManageInstance(resource.Resource):
@@ -12,12 +12,12 @@ class ManageInstance(resource.Resource):
     repo_name: configurable.Var[str]
     server_certs_path: configurable.Var[str]
 
-    deploy_key: resource.Ref[code_repository.GithubDeployKey]
+    deploy_key: resource.Ref[git.GithubDeployKey]
     instance: resource.Ref[aws_ec2.Instance]
 
-    yum_install_node: resource.Ref[package_manager.YumPackageLoader]
-    yum_install_git: resource.Ref[package_manager.YumPackageLoader]
-    git_deploy_code: resource.Ref[code_repository.GitDeploy]
+    yum_install_node: resource.Ref[yum.PackageLoader]
+    yum_install_git: resource.Ref[yum.PackageLoader]
+    git_deploy_code: resource.Ref[git.GitDeploy]
     install_server_cert: resource.Ref[file.Transfer]
     install_server_key: resource.Ref[file.Transfer]
     setup_express_service: resource.Ref[aws_ec2.Service]
@@ -41,21 +41,21 @@ class ManageInstance(resource.Resource):
     def elaborate(self, phase: resource.Phase):
         self.instance.resolve(phase, aws_ec2.Instance)
 
-        self.yum_install_node.resolve(phase, package_manager.YumPackageLoader)
+        self.yum_install_node.resolve(phase, yum.PackageLoader)
         self.yum_install_node().alias(
             instance=self.instance,
             yum_repos = { 'node14': 'https://rpm.nodesource.com/setup_14.x' }, 
             package_names = ['nodejs']
         ) 
 
-        self.yum_install_git.resolve(phase, package_manager.YumPackageLoader)
+        self.yum_install_git.resolve(phase, yum.PackageLoader)
         self.yum_install_git().alias(
             instance=self.instance, 
             yum_repos = {  }, 
             package_names = ['git']
         )
 
-        self.git_deploy_code.resolve(phase, code_repository.GitDeploy)
+        self.git_deploy_code.resolve(phase, git.GitDeploy)
         self.git_deploy_code().alias(
             instance=self.instance,
             deploy_key=self.deploy_key,
@@ -117,7 +117,7 @@ class ManageCluster(resource.Resource):
     instance_count: configurable.Var[int]
     server_certs_path: configurable.Var[str]
 
-    deploy_key: resource.Ref[code_repository.GithubDeployKey]
+    deploy_key: resource.Ref[git.GithubDeployKey]
     key_pair: resource.Ref[aws_ec2.KeyPair]
     security_group: resource.Ref[aws_ec2.SecurityGroup]
     public_ip: resource.Ref[aws_ec2.PublicIp]
@@ -143,7 +143,7 @@ class ManageCluster(resource.Resource):
         self.instances = []
 
     def elaborate(self, phase: resource.Phase):
-        self.deploy_key.resolve(phase, code_repository.GithubDeployKey)
+        self.deploy_key.resolve(phase, git.GithubDeployKey)
         self.deploy_key().alias(owner=self.repo_owner, repo=self.repo_name)
 
         self.key_pair.resolve(phase, aws_ec2.KeyPair)

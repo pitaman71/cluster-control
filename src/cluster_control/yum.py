@@ -9,7 +9,7 @@ from . import configurable
 from . import resource
 from . import file
 
-class YumPackageLoader(resource.Resource):
+class PackageLoader(resource.Resource):
     """Resource representing an installation of a Yum package on an instance"""
     yum_repos: configurable.Var[typing.Dict[str, str]]
     package_names: configurable.Var[typing.List[str]]
