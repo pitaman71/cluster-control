@@ -17,14 +17,10 @@ from . import resource
 from . import file
 from . import formats
 from . import package_manager
-from . import ec2_cloud
+from . import aws_ec2
 from . import ec2_express_cluster
 from . import code_repository
 from . import ssl_security
-
-repo_path = script_path.split('/')
-repo_path = repo_path[0:len(repo_path)-1]
-repo_path = '/'.join(repo_path)
 
 import argparse
 

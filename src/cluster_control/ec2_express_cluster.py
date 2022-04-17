@@ -1,10 +1,9 @@
 import typing
-from xmlrpc.client import boolean
 
 from . import configurable
 from . import resource
 from . import code_repository
-from . import ec2_cloud
+from . import aws_ec2
 from . import package_manager
 from . import file
 
@@ -14,14 +13,14 @@ class ManageInstance(resource.Resource):
     server_certs_path: configurable.Var[str]
 
     deploy_key: resource.Ref[code_repository.GithubDeployKey]
-    instance: resource.Ref[ec2_cloud.Instance]
+    instance: resource.Ref[aws_ec2.Instance]
 
     yum_install_node: resource.Ref[package_manager.YumPackageLoader]
     yum_install_git: resource.Ref[package_manager.YumPackageLoader]
     git_deploy_code: resource.Ref[code_repository.GitDeploy]
     install_server_cert: resource.Ref[file.Transfer]
     install_server_key: resource.Ref[file.Transfer]
-    setup_express_service: resource.Ref[ec2_cloud.Service]
+    setup_express_service: resource.Ref[aws_ec2.Service]
 
     def __init__(self, resource_path: typing.Union[ None, typing.List[str] ] = None):
         super().__init__(resource_path)
@@ -40,7 +39,7 @@ class ManageInstance(resource.Resource):
         self.setup_express_service = resource.Ref(self, 'setup_express_service')
 
     def elaborate(self, phase: resource.Phase):
-        self.instance.resolve(phase, ec2_cloud.Instance)
+        self.instance.resolve(phase, aws_ec2.Instance)
 
         self.yum_install_node.resolve(phase, package_manager.YumPackageLoader)
         self.yum_install_node().alias(
@@ -85,7 +84,7 @@ class ManageInstance(resource.Resource):
             )
         )
 
-        self.setup_express_service.resolve(phase, ec2_cloud.Service)
+        self.setup_express_service.resolve(phase, aws_ec2.Service)
         self.setup_express_service().alias(
             instance=self.instance, 
             commands=[
@@ -119,10 +118,10 @@ class ManageCluster(resource.Resource):
     server_certs_path: configurable.Var[str]
 
     deploy_key: resource.Ref[code_repository.GithubDeployKey]
-    key_pair: resource.Ref[ec2_cloud.KeyPair]
-    security_group: resource.Ref[ec2_cloud.SecurityGroup]
-    public_ip: resource.Ref[ec2_cloud.PublicIp]
-    cluster: resource.Ref[ec2_cloud.Cluster]
+    key_pair: resource.Ref[aws_ec2.KeyPair]
+    security_group: resource.Ref[aws_ec2.SecurityGroup]
+    public_ip: resource.Ref[aws_ec2.PublicIp]
+    cluster: resource.Ref[aws_ec2.Cluster]
 
     instances: typing.List[resource.Ref[ManageInstance]]
 
@@ -147,14 +146,14 @@ class ManageCluster(resource.Resource):
         self.deploy_key.resolve(phase, code_repository.GithubDeployKey)
         self.deploy_key().alias(owner=self.repo_owner, repo=self.repo_name)
 
-        self.key_pair.resolve(phase, ec2_cloud.KeyPair)
+        self.key_pair.resolve(phase, aws_ec2.KeyPair)
 
-        self.security_group.resolve(phase, ec2_cloud.SecurityGroup)
+        self.security_group.resolve(phase, aws_ec2.SecurityGroup)
         self.security_group().alias(description=f"{self.name}-sg")
 
-        self.public_ip.resolve(phase, ec2_cloud.PublicIp)
+        self.public_ip.resolve(phase, aws_ec2.PublicIp)
 
-        self.cluster.resolve(phase, ec2_cloud.Cluster)
+        self.cluster.resolve(phase, aws_ec2.Cluster)
         self.cluster().alias(
             count=self.instance_count,
             instance_type=self.ec2_instance_type,

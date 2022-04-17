@@ -7,7 +7,7 @@
     - [x] relocate JSONSetEncoder to format.py
   - make sure all AWS created resources have names prefixed with cluster name
   - restore EC2 express cluster ops to full working order
-    - [x] up, down, ssh
+    - [x] up, down, ssh, watch
     - [ ] start, stop
     - [ ] pull, build
   - proper ordering of construction, destruction is more than just forward and backward

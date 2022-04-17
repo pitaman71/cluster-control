@@ -11,7 +11,7 @@ import uuid
 from . import configurable
 from . import resource
 from . import code_repository
-from . import ec2_cloud
+from . import aws_ec2
 from . import package_manager
 from . import file
 from . import formats
