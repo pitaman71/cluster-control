@@ -93,6 +93,11 @@ class JSONReader:
         elif not self.is_ref:
             print (f"WARNING: While reading object of type {self.obj.__class__.__qualname__} property {attr_name} is missing in JSON {self.json}")
 
+    def instantiate(self, path):
+        klass = lookup_class(self.modules, path)
+        obj = klass()
+        return obj
+    
     def read(self, obj=None):
         if isinstance(self.json, list):
             self.obj = [ JSONReader(self.modules, item, self.refs).read() for item in self.json ]
@@ -103,8 +108,7 @@ class JSONReader:
                 self.obj = obj
                 self.obj.marshal(self)
             elif '__class__' in self.json:
-                klass = lookup_class(self.modules, self.json['__class__'].split('.'))
-                self.obj = klass()
+                self.obj = self.instantiate(self.json['__class__'].split('.'))
                 self.obj.marshal(self)
             else:
                 self.obj = dict((( (key, JSONReader(self.modules, value, self.refs).read()) for key, value in self.json.items())))

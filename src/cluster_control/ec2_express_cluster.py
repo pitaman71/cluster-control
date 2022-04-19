@@ -158,6 +158,7 @@ class ManageCluster(resource.Resource):
             count=self.instance_count,
             instance_type=self.ec2_instance_type,
             image='ami-02354e95b39ca8dec',
+            root_user_name='ec2-user',
             key_pair=self.key_pair,
             security_group=self.security_group,
             public_ip=self.public_ip

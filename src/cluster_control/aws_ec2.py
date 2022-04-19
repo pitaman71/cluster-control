@@ -14,6 +14,7 @@ import time
 import subprocess
 import tempfile
 
+from . import actions
 from . import configurable
 from . import resource
 from . import file
@@ -217,28 +218,32 @@ class Instance(resource.Resource):
     """Resource representing a virtual host in the on-demand AWS EC2 cloud"""
     local_key_file: None|str
 
-    ec2_instance_id: configurable.Var[str]
     instance_type: configurable.Var[str]
     image: configurable.Var[str] 
+    root_user_name: configurable.Var[str] 
 
     key_pair: resource.Ref[KeyPair]
     security_group: resource.Ref[SecurityGroup]
     public_ip: resource.Ref[PublicIp]
 
+    ec2_instance_id: configurable.Var[str]
+
     def __init__(self, resource_path: typing.Union[ None, typing.List[str] ] = None):
         super().__init__(resource_path)
         self.local_key_file = None
 
-        self.ec2_instance_id = configurable.Var(self, 'ec2_instance_id')
         self.instance_type = configurable.Var(self, 'instance_type')
         self.image = configurable.Var(self, 'image')
+        self.root_user_name = configurable.Var(self, 'root_user_name')
         
         self.key_pair = resource.Ref(self, 'key_pair')
         self.security_group = resource.Ref(self, 'security_group')
         self.public_ip = resource.Ref(self, 'public_ip')
 
+        self.ec2_instance_id = configurable.Var(self, 'ec2_instance_id')
+
     def target(self):
-        result = 'ec2-user'
+        result = self.root_user_name()
         if self.public_ip and self.public_ip().ip_address():
             result = result + '@'+ self.public_ip().ip_address()
         return result
@@ -311,15 +316,23 @@ class Instance(resource.Resource):
 
     def test(self):        
         args=['echo', 'hello world']
-        timeout=2
+        timeout=5
         with open(self.get_local_key_filename(), 'wb+') as keyfile:
             keyfile.write(self.key_pair().private().contents())
             keyfile.close()
             os.chmod(keyfile.name, stat.S_IREAD | stat.S_IWRITE)
             time.sleep(1)
             process = subprocess.Popen(['ssh', '-A', '-o', 'StrictHostKeyChecking=no', '-o', 'ForwardAgent=yes', '-i', keyfile.name, self.target() ] + args, stdin=None, stdout=sys.stdout, stderr=sys.stderr)
-            process.communicate(timeout=timeout)
+            while process.returncode is None:
+                try:
+                    print("DEBUG: BEGIN calling process.communicate")
+                    process.communicate(timeout=timeout)
+                    print("DEBUG: END   calling process.communicate")
+                except subprocess.TimeoutExpired as e:
+                    if process.returncode is not None:
+                        raise e
             if process.returncode != 0:
+                print(f"DEBUG: FAIL process.returncode = {process.returncode}")
                 raise RuntimeError(f'Cannot connect over SSH to {self.name} rc={process.returncode}')
 
     def shell(self):
@@ -417,6 +430,7 @@ class Cluster(resource.Resource):
     """Resource representing a virtual cluster in the on-demand AWS EC2 cloud"""
     instance_type: configurable.Var[str]
     image: configurable.Var[str] 
+    root_user_name: configurable.Var[str] 
     count: configurable.Var[int]
 
     key_pair: resource.Ref[KeyPair]
@@ -428,6 +442,7 @@ class Cluster(resource.Resource):
         super().__init__(resource_path)
         self.instance_type = configurable.Var(self, 'instance_type')
         self.image = configurable.Var(self, 'image')
+        self.root_user_name = configurable.Var(self, 'root_user_name')
         self.count = configurable.Var(self, 'count')
 
         self.key_pair = resource.Ref(self, 'key_pair')
@@ -436,17 +451,26 @@ class Cluster(resource.Resource):
         self.instances = []
 
     def elaborate(self, phase: resource.Phase):
+        self.key_pair.resolve(phase, KeyPair)
+
+        self.security_group.resolve(phase, SecurityGroup)
+        self.security_group().alias(description=f"{self.name}-sg")
+
+        self.public_ip.resolve(phase, PublicIp)
+
         super().elaborate(phase)
+
         if len(self.instances) > 0:
             print(f"SKIP {self} {len(self.instances)} instances have already been created")
         else:
             with phase.sub(f"{self} : creating {self.count()} ec2 instances"):
-                for i in range(self.count()):
+                for i in range(int(self.count())):
                     instance_name = f"instance#{i}"
                     with phase.sub(f"{self} : creating ec2 instance {instance_name}"):
                         instance = Instance([ *(self.path()), instance_name ]).alias(
                             instance_type = self.instance_type,
                             image = self.image,
+                            root_user_name = self.root_user_name,
                             key_pair = self.key_pair,
                             security_group = self.security_group
                         )
@@ -458,10 +482,10 @@ class Cluster(resource.Resource):
                         instance.elaborate(phase)
 
     def up(self, phase: resource.Phase):
+        super().up(phase)
         for instance in self.instances:
             with phase.sub(f"UP {instance}") as phase:
                 instance.up(phase)
-        super().up(phase)
 
     def down(self, phase: resource.Phase):
         for instance in self.instances:
@@ -474,3 +498,14 @@ class Cluster(resource.Resource):
 
     def marshal(self, visitor):
         super().marshal(visitor, lambda visitor: visitor.inline('instances'))
+
+the: Cluster|None = None
+
+if __name__ == "__main__":
+    from . import main
+    controller = main.Controller([ 
+        actions.Do[Cluster](['up'], lambda resource, phase: (resource.elaborate(phase), resource.up(phase))),
+        actions.Do[Cluster](['down'], lambda resource, phase: resource.down(phase)),
+        actions.Do[Cluster](['shell'], lambda resource, phase: resource.shell(phase)),
+    ] )
+    controller()

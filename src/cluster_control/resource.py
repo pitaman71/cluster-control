@@ -137,12 +137,12 @@ class Resource(configurable.HasPath):
         result: typing.List[Resource] = []
         for key, value in self.__dict__.items():
             if isinstance(value, Ref):
-                if value._resource is None:
+                if not value():
                     print(f"WARNING: null resource for {value}")
-                elif not isinstance(value._resource, Resource):
+                elif not isinstance(value(), Resource):
                     raise RuntimeError(f"TYPE ERROR: expected a Ref but got a {value}")
                 else:
-                    result.append(value._resource)
+                    result.append(value())
         return result
 
 ResourceType = typing.TypeVar('ResourceType', bound=Resource)
@@ -238,10 +238,10 @@ class Ref(typing.Generic[ResourceType]):
 
     def elaborate(self, phase: resource.Phase):
         self.resolve(phase)
-        if self._resource is None:
+        if not bool(self):
             print(f"SKIP unresolved resource {self}")
         else:
-            self._resource.elaborate(phase)
+            self().elaborate(phase)
         return bool(self)
 
     def borrow(self, owner: Ref[ResourceType]):
